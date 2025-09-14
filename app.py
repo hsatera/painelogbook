@@ -302,14 +302,14 @@ if not filtered_df.empty:
         st.markdown(f"### 👩‍⚕️ Residente: {resident}")
         
         for _, row in group.iterrows():
-            st.markdown(f"{row['Questao']}")
+            st.markdown(f"**Módulo:** {row['Modulo']}")
+            st.markdown(f"**Pergunta:** {row['Questao']}")
             
             with st.expander("Ver resumo completo"):
                 st.markdown(f"**Data:** {row['Data'].strftime('%d/%m/%Y') if pd.notna(row['Data']) else 'Não informada'}")
                 st.markdown(f"**Preceptor:** {row['Preceptor']}")
                 st.markdown(f"**UBS:** {row['UBS']}")
                 st.markdown(f"**Situação:** {row['Situacao']}")
-                st.markdown(f"**Módulo:** {row['Modulo']}")
                 st.markdown(f"**Referência:** {row['Referencia']}")
                 st.markdown(f"**Encaminhamento:** {row['Encaminhamento']}")
 else:
