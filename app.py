@@ -115,7 +115,7 @@ def load_data(url, resident_metadata):
     df['Referencia'] = df['Referencia'].fillna('')
     df['Encaminhamento'] = df['Encaminhamento'].fillna('')
     
-    # Nova lógica para o nome do mês
+    # Lógica para o nome do mês
     df['Mes'] = df['Data'].apply(
         lambda x: f"{MONTHS_TRANSLATION.get(x.month)} de {x.year}" if pd.notna(x) else 'Não informado'
     )
@@ -302,11 +302,10 @@ if not filtered_df.empty:
         st.markdown(f"### 👩‍⚕️ Residente: {resident}")
         
         for _, row in group.iterrows():
-            data_formatada = row['Data'].strftime('%d/%m/%Y') if pd.notna(row['Data']) else 'Data não informada'
-            st.markdown(f"**Data:** {data_formatada}")
-            st.markdown(f"**Pergunta:** {row['Questao']}")
+            st.markdown(f"{row['Questao']}")
             
             with st.expander("Ver resumo completo"):
+                st.markdown(f"**Data:** {row['Data'].strftime('%d/%m/%Y') if pd.notna(row['Data']) else 'Não informada'}")
                 st.markdown(f"**Preceptor:** {row['Preceptor']}")
                 st.markdown(f"**UBS:** {row['UBS']}")
                 st.markdown(f"**Situação:** {row['Situacao']}")
