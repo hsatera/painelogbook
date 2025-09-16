@@ -90,19 +90,29 @@ def load_data(url, resident_metadata):
         st.error(f"Erro ao carregar os dados do Google Sheets. Verifique o URL ou as configurações de compartilhamento.")
         st.stop()
     
-    df.rename(columns={
+    # Mapeamento de colunas original para os novos nomes
+    column_mapping = {
         'Carimbo de data/hora': 'Data',
         'Docente/Tutor/preceptor': 'Preceptor',
         'Residente envolvido(a)': 'Residente',
         'UBS': 'UBS',
         'Situação/caso discutida/o (sem identificação)': 'Situacao',
         'Pergunta norteadora da discussão': 'Questao',
-        'Principal Módulo do GT Teórico relacionado à discussão': 'ModuloPrincipal',
-        'Se desejar, marque Outros Módulos do GT teórico relacionados à situação': 'OutrosModulos',
+        'Principal Módulo do GT Teórico relacionado à discussão': 'Modulo',
         'Referência(s) utilizadas/sugeridas (com link)': 'Referencia',
         'Pactuações/encaminhamentos/feedback realizado/procedimento realizado': 'Encaminhamento'
-    }, inplace=True)
+    }
     
+    # Filtra o mapeamento para incluir apenas as colunas que existem no DataFrame
+    columns_to_rename = {old: new for old, new in column_mapping.items() if old in df.columns}
+    df.rename(columns=columns_to_rename, inplace=True)
+
+    # Garante que as colunas importantes existam, preenchendo com valores padrão se necessário
+    for col in ['Data', 'Preceptor', 'Residente', 'UBS', 'Situacao', 'Questao', 'Referencia', 'Encaminhamento', 'Modulo']:
+        if col not in df.columns:
+            df[col] = ''
+    
+    # Conversão de tipos de dados e tratamento de nulos
     df['Data'] = df['Data'].astype(str).str.strip()
     df['Data'] = df['Data'].str.replace(r'(\d+)\/(\d+)\/(\d{4})\s', r'\3-\2-\1 ', regex=True)
     df['Data'] = pd.to_datetime(df['Data'], errors='coerce')
@@ -110,8 +120,7 @@ def load_data(url, resident_metadata):
     df['Preceptor'] = df['Preceptor'].fillna('Não informado')
     df['Residente'] = df['Residente'].fillna('Não informado')
     df['UBS'] = df['UBS'].fillna('Não informado')
-    df['ModuloPrincipal'] = df['ModuloPrincipal'].fillna('Não informado')
-    df['OutrosModulos'] = df['OutrosModulos'].fillna('Não informado')
+    df['Modulo'] = df['Modulo'].fillna('Não informado')
     df['Situacao'] = df['Situacao'].fillna('')
     df['Questao'] = df['Questao'].fillna('')
     df['Referencia'] = df['Referencia'].fillna('')
@@ -129,18 +138,6 @@ def load_data(url, resident_metadata):
 
 df = load_data(GSHEETS_URL, resident_metadata)
 
-# --- Cria a lista completa de módulos para o filtro
-df_modulos_temp = df.copy()
-df_modulos_temp['OutrosModulos'] = df_modulos_temp['OutrosModulos'].astype(str).str.split(',').apply(lambda x: [s.strip() for s in x])
-df_modulos_temp['TodosModulos'] = df_modulos_temp.apply(
-    lambda row: [row['ModuloPrincipal']] + row['OutrosModulos'] if row['ModuloPrincipal'] != 'Não informado' else row['OutrosModulos'],
-    axis=1
-)
-df_modulos_temp = df_modulos_temp.explode('TodosModulos')
-all_modulos = sorted(df_modulos_temp['TodosModulos'].unique().tolist())
-if 'Não informado' in all_modulos:
-    all_modulos.remove('Não informado')
-
 # --- Barra Lateral de Filtros ---
 st.sidebar.header("⚙️ Filtros")
 
@@ -148,7 +145,13 @@ residents_from_dict = list(resident_metadata.keys())
 all_residents = sorted(residents_from_dict)
 all_ubs = sorted(list(set(meta['UBS'] for meta in resident_metadata.values())))
 all_residency_years = sorted(list(set(meta['Ano'] for meta in resident_metadata.values())))
-all_months = sorted(df['Mes'].unique().tolist())
+all_modulos = sorted(df['Modulo'].unique().tolist())
+
+# Obtém a lista de meses únicos em ordem cronológica
+df_temp = df.copy()
+df_temp['DataOrdenacao'] = pd.to_datetime(df_temp['Data'])
+sorted_months_df = df_temp.sort_values('DataOrdenacao')
+all_months = sorted_months_df['Mes'].unique().tolist()
 
 selected_residents = st.sidebar.multiselect("Residente", all_residents)
 selected_ubs = st.sidebar.multiselect("UBS", all_ubs)
@@ -164,35 +167,12 @@ if selected_residents:
     filtered_df = filtered_df[filtered_df['Residente'].isin(selected_residents)]
 if selected_ubs:
     filtered_df = filtered_df[filtered_df['UBS'].isin(selected_ubs)]
+if selected_modulos:
+    filtered_df = filtered_df[filtered_df['Modulo'].isin(selected_modulos)]
 if selected_months:
     filtered_df = filtered_df[filtered_df['Mes'].isin(selected_months)]
 if selected_residency_years:
     filtered_df = filtered_df[filtered_df['AnoResidencia'].isin(selected_residency_years)]
-if selected_modulos:
-    # Filtra o dataframe principal para que as discussões contenham os módulos selecionados
-    df_modulos_combinado = filtered_df.copy()
-    df_modulos_combinado['OutrosModulos'] = df_modulos_combinado['OutrosModulos'].astype(str).str.split(',').apply(lambda x: [s.strip() for s in x])
-    df_modulos_combinado['TodosModulos'] = df_modulos_combinado.apply(
-        lambda row: [row['ModuloPrincipal']] + row['OutrosModulos'] if row['ModuloPrincipal'] != 'Não informado' else row['OutrosModulos'],
-        axis=1
-    )
-    df_modulos_combinado = df_modulos_combinado.explode('TodosModulos')
-    
-    # Encontra os índices das discussões que contêm os módulos selecionados
-    indices_com_modulo = df_modulos_combinado[df_modulos_combinado['TodosModulos'].isin(selected_modulos)].index
-    filtered_df = filtered_df.loc[indices_com_modulo].drop_duplicates().copy()
-
-# Cria o dataframe de módulos para o gráfico, a partir do df já filtrado
-df_modulos_combinado = filtered_df.copy()
-df_modulos_combinado['OutrosModulos'] = df_modulos_combinado['OutrosModulos'].astype(str).str.split(',').apply(lambda x: [s.strip() for s in x])
-df_modulos_combinado['TodosModulos'] = df_modulos_combinado.apply(
-    lambda row: [row['ModuloPrincipal']] + row['OutrosModulos'] if row['ModuloPrincipal'] != 'Não informado' else row['OutrosModulos'],
-    axis=1
-)
-df_modulos_combinado = df_modulos_combinado.explode('TodosModulos')
-df_modulos_combinado = df_modulos_combinado[df_modulos_combinado['TodosModulos'] != '']
-df_modulos_combinado = df_modulos_combinado[df_modulos_combinado['TodosModulos'] != 'Não informado']
-
 
 # --- Seção Principal ---
 st.header("📊 Resumo das Discussões Filtradas")
@@ -276,17 +256,11 @@ if fig_mes:
     st.plotly_chart(fig_mes, use_container_width=True)
 
 # Demais gráficos
-chart_cols = ['UBS', 'AnoResidencia', 'Residente']
+chart_cols = ['Modulo', 'UBS', 'AnoResidencia', 'Residente']
 for chart_col_name in chart_cols:
     fig = plot_bar_chart(filtered_df, chart_col_name, f'Discussões por {chart_col_name}')
     if fig:
         st.plotly_chart(fig, use_container_width=True)
-
-# Gráfico de Módulos (agora combinado)
-fig_modulos = plot_bar_chart(df_modulos_combinado, 'TodosModulos', 'Discussões por Módulo')
-if fig_modulos:
-    st.plotly_chart(fig_modulos, use_container_width=True)
-
 
 # WordCloud
 st.header("☁️ Nuvem de Palavras das Situações Discutidas")
@@ -339,15 +313,13 @@ if not filtered_df.empty:
         st.markdown(f"### 👩‍⚕️ Residente: {resident}")
         
         for _, row in group.iterrows():
-            st.markdown(f"{row['ModuloPrincipal']}: {row['Questao']}")
+            st.markdown(f"**{row['Modulo']}**: {row['Questao']}")
             
             with st.expander("Ver resumo completo"):
                 st.markdown(f"**Data:** {row['Data'].strftime('%d/%m/%Y') if pd.notna(row['Data']) else 'Não informada'}")
                 st.markdown(f"**Preceptor:** {row['Preceptor']}")
                 st.markdown(f"**UBS:** {row['UBS']}")
                 st.markdown(f"**Situação:** {row['Situacao']}")
-                st.markdown(f"**Módulo Principal:** {row['ModuloPrincipal']}")
-                st.markdown(f"**Outros Módulos:** {row['OutrosModulos']}")
                 st.markdown(f"**Referência:** {row['Referencia']}")
                 st.markdown(f"**Encaminhamento:** {row['Encaminhamento']}")
 else:
