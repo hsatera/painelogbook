@@ -262,8 +262,12 @@ for chart_col_name in chart_cols:
     if fig:
         st.plotly_chart(fig, use_container_width=True)
 
+# ############################################################### #
+# ###            INÍCIO DA SEÇÃO ALTERADA                     ### #
+# ############################################################### #
+
 # WordCloud
-st.header("☁️ Nuvem de Palavras das Situações Discutidas")
+st.header("☁️ Nuvem de Palavras das Questões Norteadoras") # ALTERAÇÃO 1: Título atualizado
 PALAVRAS_EXCLUIR = set(stopwords.words('portuguese')).union({
     'do', 'da', 'dos', 'das', 'no', 'na', 'nos', 'nas', 'um', 'uma', 'uns', 'umas',
     'pra', 'pelo', 'pela', 'pelos', 'pelas', 'etc', 'pode'
@@ -289,9 +293,11 @@ def gerar_wordcloud(palavras_filtradas):
     plt.tight_layout(pad=0)
     return fig
 
-all_situacoes_text = " ".join(filtered_df['Situacao'].dropna().tolist())
-if all_situacoes_text.strip():
-    palavras_filtradas = filtrar_palavras(all_situacoes_text)
+# ALTERAÇÃO 2: Trocado 'Situacao' por 'Questao'
+all_questoes_text = " ".join(filtered_df['Questao'].dropna().tolist()) 
+
+if all_questoes_text.strip():
+    palavras_filtradas = filtrar_palavras(all_questoes_text)
     if palavras_filtradas:
         wordcloud_fig = gerar_wordcloud(palavras_filtradas)
         if wordcloud_fig:
@@ -302,7 +308,13 @@ if all_situacoes_text.strip():
     else:
         st.info("Nenhuma palavra significativa encontrada para gerar a nuvem de palavras após a filtragem.")
 else:
-    st.info("Nenhuma situação discutida disponível para gerar a nuvem de palavras com os filtros selecionados.")
+    # ALTERAÇÃO 3: Mensagem atualizada
+    st.info("Nenhuma questão norteadora disponível para gerar a nuvem de palavras com os filtros selecionados.")
+
+# ############################################################### #
+# ###              FIM DA SEÇÃO ALTERADA                      ### #
+# ############################################################### #
+
 
 # --- Tabela de Dados Agrupada por Residente ---
 st.header("🔎 Detalhe das Discussões por Residente")
