@@ -262,12 +262,8 @@ for chart_col_name in chart_cols:
     if fig:
         st.plotly_chart(fig, use_container_width=True)
 
-# ############################################################### #
-# ###            INÍCIO DA SEÇÃO ALTERADA                     ### #
-# ############################################################### #
-
 # WordCloud
-st.header("☁️ Nuvem de Palavras das Questões Norteadoras") # ALTERAÇÃO 1: Título atualizado
+st.header("☁️ Nuvem de Palavras das Questões Norteadoras")
 PALAVRAS_EXCLUIR = set(stopwords.words('portuguese')).union({
     'do', 'da', 'dos', 'das', 'no', 'na', 'nos', 'nas', 'um', 'uma', 'uns', 'umas',
     'pra', 'pelo', 'pela', 'pelos', 'pelas', 'etc', 'pode'
@@ -293,7 +289,6 @@ def gerar_wordcloud(palavras_filtradas):
     plt.tight_layout(pad=0)
     return fig
 
-# ALTERAÇÃO 2: Trocado 'Situacao' por 'Questao'
 all_questoes_text = " ".join(filtered_df['Questao'].dropna().tolist()) 
 
 if all_questoes_text.strip():
@@ -308,31 +303,45 @@ if all_questoes_text.strip():
     else:
         st.info("Nenhuma palavra significativa encontrada para gerar a nuvem de palavras após a filtragem.")
 else:
-    # ALTERAÇÃO 3: Mensagem atualizada
     st.info("Nenhuma questão norteadora disponível para gerar a nuvem de palavras com os filtros selecionados.")
-
-# ############################################################### #
-# ###              FIM DA SEÇÃO ALTERADA                      ### #
-# ############################################################### #
 
 
 # --- Tabela de Dados Agrupada por Residente ---
 st.header("🔎 Detalhe das Discussões por Residente")
 
 if not filtered_df.empty:
-    for resident, group in filtered_df[filtered_df['Residente'].isin(residents_from_dict)].groupby('Residente'):
+    # Use sort=False para manter a ordem original dos residentes se desejar
+    for resident, group in filtered_df[filtered_df['Residente'].isin(residents_from_dict)].groupby('Residente', sort=False):
         st.markdown("---")
         st.markdown(f"### 👩‍⚕️ Residente: {resident}")
         
         for _, row in group.iterrows():
-            st.markdown(f"**{row['Modulo']}**: {row['Questao']}")
+            # Exibe o Módulo e a Questão como título principal da discussão
+            if row['Questao']:
+                st.markdown(f"**{row['Modulo']}**: {row['Questao']}")
+            else:
+                st.markdown(f"**{row['Modulo']}**") # Mostra apenas o módulo se a questão estiver vazia
             
             with st.expander("Ver resumo completo"):
                 st.markdown(f"**Data:** {row['Data'].strftime('%d/%m/%Y') if pd.notna(row['Data']) else 'Não informada'}")
-                st.markdown(f"**Preceptor:** {row['Preceptor']}")
-                st.markdown(f"**UBS:** {row['UBS']}")
-                st.markdown(f"**Situação:** {row['Situacao']}")
-                st.markdown(f"**Referência:** {row['Referencia']}")
-                st.markdown(f"**Encaminhamento:** {row['Encaminhamento']}")
+                
+                # --- INÍCIO DA SEÇÃO ALTERADA ---
+                # Apenas exibe o campo se ele tiver conteúdo
+                
+                if row['Preceptor'] and row['Preceptor'] != 'Não informado':
+                    st.markdown(f"**Preceptor:** {row['Preceptor']}")
+                
+                if row['UBS'] and row['UBS'] != 'Não informado':
+                    st.markdown(f"**UBS:** {row['UBS']}")
+
+                if row['Situacao']:
+                    st.markdown(f"**Situação:** {row['Situacao']}")
+
+                if row['Referencia']:
+                    st.markdown(f"**Referência:** {row['Referencia']}")
+
+                if row['Encaminhamento']:
+                    st.markdown(f"**Encaminhamento:** {row['Encaminhamento']}")
+                # --- FIM DA SEÇÃO ALTERADA ---
 else:
     st.info("Nenhuma discussão encontrada com os filtros selecionados. Ajuste os filtros na barra lateral.")
