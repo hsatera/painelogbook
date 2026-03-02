@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import csv
 
-# --- Configuração Inicial ---
+# --- Configurações Iniciais e Tradução ---
 MONTHS_TRANSLATION = {
     1: "Janeiro", 2: "Fevereiro", 3: "Março",
     4: "Abril", 5: "Maio", 6: "Junho",
@@ -23,8 +23,6 @@ MONTHS_TRANSLATION = {
 nltk.download('stopwords', quiet=True)
 
 st.set_page_config(layout="wide", page_title="Análise de Discussões Clínicas")
-st.title("📚 Análise de Discussões Clínicas da Residência")
-st.markdown("Exibindo **todas as discussões históricas** para os residentes listados no dicionário atualizado.")
 
 # --- Dicionário de Residentes Atualizado ---
 residentes_dict = {
@@ -65,22 +63,21 @@ residentes_dict = {
     }
 }
 
-# Mapeamento reverso para busca rápida
 resident_metadata = {}
 for ubs, anos in residentes_dict.items():
     for ano, nomes in anos.items():
         for nome in nomes:
             resident_metadata[nome] = {'UBS': ubs, 'Ano': ano}
 
-# --- Carregamento de Dados ---
+# --- Carregamento e Processamento ---
 GSHEETS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRaHBifgKX5-0Bi4DIBVRJMz2jcLdfLmBg4uvgWXZXwb5ziT6B_OwM7x3oofJWHoUdZQnxrbHHt9YUu/pub?output=csv" 
 
 @st.cache_data(ttl=600)
 def load_data(url, resident_metadata):
     try:
         df = pd.read_csv(url, quoting=csv.QUOTE_MINIMAL)
-    except Exception as e:
-        st.error("Erro ao carregar os dados. Verifique a conexão.")
+    except:
+        st.error("Erro ao carregar dados.")
         st.stop()
     
     column_mapping = {
@@ -94,85 +91,114 @@ def load_data(url, resident_metadata):
         'Referência(s) utilizadas/sugeridas (com link)': 'Referencia',
         'Pactuações/encaminhamentos/feedback realizado/procedimento realizado': 'Encaminhamento'
     }
-    
     df.rename(columns={old: new for old, new in column_mapping.items() if old in df.columns}, inplace=True)
 
-    # Tratamento de Data (Lida com formatos DD/MM/YYYY ou YYYY-MM-DD)
+    # Tratamento de Data
     df['Data'] = df['Data'].astype(str).str.strip()
     df['Data'] = df['Data'].str.replace(r'(\d+)\/(\d+)\/(\d{4})\s', r'\3-\2-\1 ', regex=True)
     df['Data'] = pd.to_datetime(df['Data'], errors='coerce')
 
-    # Limpeza de campos nulos
-    cols_to_fix = ['Preceptor', 'Residente', 'UBS', 'Modulo', 'Situacao', 'Questao', 'Referencia', 'Encaminhamento']
-    for col in cols_to_fix:
-        if col in df.columns:
-            df[col] = df[col].fillna('')
+    # Preenchimento de nulos
+    for col in ['Preceptor', 'Residente', 'UBS', 'Modulo', 'Situacao', 'Questao', 'Referencia', 'Encaminhamento']:
+        if col in df.columns: df[col] = df[col].fillna('')
 
-    # Atribuição de Metadados baseada no Dicionário Novo
+    # Metadados do Dicionário
     df['AnoResidencia'] = df['Residente'].apply(lambda x: resident_metadata.get(x, {}).get('Ano', 'Não informado'))
-    df['UBS_Ref'] = df['Residente'].apply(lambda x: resident_metadata.get(x, {}).get('UBS', 'Não informado'))
-    
-    # Substitui a UBS original pela do dicionário se o residente for conhecido
-    df['UBS'] = df.apply(lambda row: row['UBS_Ref'] if row['UBS_Ref'] != 'Não informado' else row['UBS'], axis=1)
-
-    df['Mes'] = df['Data'].apply(
-        lambda x: f"{MONTHS_TRANSLATION.get(x.month)} de {x.year}" if pd.notna(x) else 'Não informado'
-    )
+    df['UBS'] = df.apply(lambda row: resident_metadata.get(row['Residente'], {}).get('UBS', row['UBS']), axis=1)
+    df['Mes'] = df['Data'].apply(lambda x: f"{MONTHS_TRANSLATION.get(x.month)} de {x.year}" if pd.notna(x) else 'Não informado')
 
     return df
 
 df = load_data(GSHEETS_URL, resident_metadata)
 
-# --- Filtros (Barra Lateral) ---
+# --- Filtros ---
 st.sidebar.header("⚙️ Filtros")
+residents_from_dict = sorted(list(resident_metadata.keys()))
 
-# Filtramos o DF para conter apenas os nomes presentes no dicionário
-allowed_names = list(resident_metadata.keys())
-filtered_df = df[df['Residente'].isin(allowed_names)]
-
-# Opções dos filtros baseadas nos dados reais e dicionário
-selected_residents = st.sidebar.multiselect("Residente", sorted(allowed_names))
+selected_residents = st.sidebar.multiselect("Residente", residents_from_dict)
 selected_ubs = st.sidebar.multiselect("UBS", sorted(list(residentes_dict.keys())))
 selected_modulos = st.sidebar.multiselect("Módulo", sorted(df['Modulo'].unique().tolist()))
-selected_months = st.sidebar.multiselect("Mês/Ano", df.sort_values('Data')['Mes'].unique().tolist())
+selected_months = st.sidebar.multiselect("Mês", df.sort_values('Data')['Mes'].unique().tolist())
 
-# Aplicação dinâmica
-if selected_residents:
-    filtered_df = filtered_df[filtered_df['Residente'].isin(selected_residents)]
-if selected_ubs:
-    filtered_df = filtered_df[filtered_df['UBS'].isin(selected_ubs)]
-if selected_modulos:
-    filtered_df = filtered_df[filtered_df['Modulo'].isin(selected_modulos)]
-if selected_months:
-    filtered_df = filtered_df[filtered_df['Mes'].isin(selected_months)]
+# Aplicar filtros (Sempre limitando aos residentes do dicionário)
+filtered_df = df[df['Residente'].isin(residents_from_dict)]
+if selected_residents: filtered_df = filtered_df[filtered_df['Residente'].isin(selected_residents)]
+if selected_ubs: filtered_df = filtered_df[filtered_df['UBS'].isin(selected_ubs)]
+if selected_modulos: filtered_df = filtered_df[filtered_df['Modulo'].isin(selected_modulos)]
+if selected_months: filtered_df = filtered_df[filtered_df['Mes'].isin(selected_months)]
 
-# --- Dashboards ---
-st.header("📊 Panorama Geral")
-st.metric("Total de Discussões", len(filtered_df))
+# --- Cabeçalho Principal ---
+st.title("📚 Análise de Discussões Clínicas da Residência")
+st.header("📊 Resumo das Discussões Filtradas")
+st.subheader(f"Total de Discussões Encontradas: {len(filtered_df)}")
 
+# --- Gráfico Mensal e Acumulado ---
 def plot_monthly_chart(data_frame):
     if data_frame.empty: return None
     df_m = data_frame.copy().sort_values('Data')
-    counts = df_m.groupby('Mes', sort=False).size().reset_index(name='Qtd')
-    fig = px.line(counts, x='Mes', y='Qtd', title="Volume de Discussões ao Longo do Tempo", markers=True)
-    return fig
+    df_m['Periodo'] = df_m['Data'].dt.to_period('M')
+    monthly_counts = df_m.groupby('Periodo').size().reset_index(name='Contagem')
+    monthly_counts['MesStr'] = monthly_counts['Periodo'].apply(lambda x: f"{MONTHS_TRANSLATION.get(x.month)} de {x.year}")
+    monthly_counts['Acumulado'] = monthly_counts['Contagem'].cumsum()
 
-col1, col2 = st.columns(2)
-with col1:
-    fig_ubs = px.pie(filtered_df, names='UBS', title="Distribuição por Unidade")
-    st.plotly_chart(fig_ubs, use_container_width=True)
-with col2:
-    fig_mod = px.bar(filtered_df['Modulo'].value_counts().reset_index(), x='Modulo', y='count', title="Discussões por Módulo")
-    st.plotly_chart(fig_mod, use_container_width=True)
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(go.Bar(x=monthly_counts['MesStr'], y=monthly_counts['Contagem'], name='Mensal'), secondary_y=False)
+    fig.add_trace(go.Scatter(x=monthly_counts['MesStr'], y=monthly_counts['Acumulado'], name='Acumulado', mode='lines+markers'), secondary_y=True)
+    fig.update_layout(title='Evolução das Discussões', height=400)
+    return fig
 
 st.plotly_chart(plot_monthly_chart(filtered_df), use_container_width=True)
 
-# --- Listagem Detalhada ---
-st.header("🔎 Detalhe das Discussões")
-for resident, group in filtered_df.groupby('Residente'):
-    with st.expander(f"👩‍⚕️ {resident} ({len(group)} discussões)"):
+# --- Outros Gráficos ---
+col_a, col_b = st.columns(2)
+with col_a:
+    st.plotly_chart(px.bar(filtered_df['Modulo'].value_counts().reset_index(), x='Modulo', y='count', title="Por Módulo"), use_container_width=True)
+with col_b:
+    st.plotly_chart(px.bar(filtered_df['UBS'].value_counts().reset_index(), x='UBS', y='count', title="Por UBS"), use_container_width=True)
+
+# --- WordCloud ---
+st.header("☁️ Nuvem de Palavras (Questões)")
+def gerar_wordcloud(texto):
+    if not texto.strip(): return None
+    sw = set(stopwords.words('portuguese')).union({'do', 'da', 'de', 'para', 'na', 'no', 'em', 'com'})
+    wc = WordCloud(width=800, height=300, background_color='white', stopwords=sw).generate(texto)
+    fig, ax = plt.subplots()
+    ax.imshow(wc, interpolation='bilinear')
+    ax.axis("off")
+    return fig
+
+texto_questoes = " ".join(filtered_df['Questao'].tolist())
+fig_wc = gerar_wordcloud(texto_questoes)
+if fig_wc: st.pyplot(fig_wc)
+
+# --- DETALHE DAS DISCUSSÕES (Layout Original Retomado) ---
+st.header("🔎 Detalhe das Discussões por Residente")
+if not filtered_df.empty:
+    for resident, group in filtered_df.groupby('Residente', sort=True):
+        st.markdown("---")
+        st.markdown(f"### 👩‍⚕️ Residente: {resident}")
+        
         for _, row in group.sort_values('Data', ascending=False).iterrows():
-            st.markdown(f"**{row['Data'].strftime('%d/%m/%Y') if pd.notna(row['Data']) else 'S/D'} - {row['Modulo']}**")
-            st.info(f"Questão: {row['Questao']}")
-            if row['Situacao']: st.write(f"*Situação:* {row['Situacao']}")
-            st.divider()
+            # Título da discussão (Módulo + Questão)
+            label = f"**{row['Modulo']}**: {row['Questao']}" if row['Questao'] else f"**{row['Modulo']}**"
+            st.markdown(label)
+            
+            with st.expander("Ver resumo completo"):
+                st.markdown(f"**Data:** {row['Data'].strftime('%d/%m/%Y') if pd.notna(row['Data']) else 'Não informada'}")
+                
+                if row['Preceptor'] and row['Preceptor'] != 'Não informado':
+                    st.markdown(f"**Preceptor:** {row['Preceptor']}")
+                
+                if row['UBS'] and row['UBS'] != 'Não informado':
+                    st.markdown(f"**UBS:** {row['UBS']}")
+
+                if row['Situacao']:
+                    st.markdown(f"**Situação:** {row['Situacao']}")
+
+                if row['Referencia']:
+                    st.markdown(f"**Referência:** {row['Referencia']}")
+
+                if row['Encaminhamento']:
+                    st.markdown(f"**Encaminhamento:** {row['Encaminhamento']}")
+else:
+    st.info("Nenhum dado encontrado para os filtros selecionados.")
