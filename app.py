@@ -11,6 +11,28 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import csv
 
+# --- Proteção simples por senha ---
+
+PASSWORD = "Residenci@MFC123!"  # troque pela senha que quiser
+
+if "acesso_liberado" not in st.session_state:
+    st.session_state["acesso_liberado"] = False
+
+if not st.session_state["acesso_liberado"]:
+
+    st.title("🔒 Acesso restrito")
+
+    senha = st.text_input("Digite a senha para acessar o painel", type="password")
+
+    if st.button("Entrar"):
+        if senha == PASSWORD:
+            st.session_state["acesso_liberado"] = True
+            st.rerun()
+        else:
+            st.error("Senha incorreta")
+
+    st.stop()
+
 # --- Configurações Iniciais ---
 
 MONTHS_TRANSLATION = {
