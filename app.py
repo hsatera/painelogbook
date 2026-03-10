@@ -273,37 +273,45 @@ with tab1:
 
     st.header(f"Total de Discussões: {len(filtered_df)}")
 
-    c1, c2 = st.columns(2)
+    # ----- Gráfico por Módulo -----
 
-    with c1:
+    fig_mod = px.bar(
+        filtered_df['Modulo'].value_counts().reset_index(),
+        x='Modulo',
+        y='count',
+        color='Modulo',
+        title="Discussões por Módulo",
+        color_discrete_sequence=px.colors.qualitative.Bold
+    )
 
-        fig_mod = px.bar(
-            filtered_df['Modulo'].value_counts().reset_index(),
-            x='Modulo',
-            y='count',
-            color='Modulo',
-            title="Discussões por Módulo",
-            color_discrete_sequence=px.colors.qualitative.Bold
-        )
+    fig_mod.update_layout(
+        height=520,
+        xaxis_title="Módulo",
+        yaxis_title="Número de Discussões"
+    )
 
-        fig_mod.update_layout(height=520)
+    st.plotly_chart(fig_mod, use_container_width=True)
 
-        st.plotly_chart(fig_mod, use_container_width=True)
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    with c2:
+    # ----- Gráfico por UBS -----
 
-        fig_ubs = px.bar(
-            filtered_df['UBS'].value_counts().reset_index(),
-            x='UBS',
-            y='count',
-            color='UBS',
-            title="Discussões por UBS",
-            color_discrete_sequence=px.colors.qualitative.Set2
-        )
+    fig_ubs = px.bar(
+        filtered_df['UBS'].value_counts().reset_index(),
+        x='UBS',
+        y='count',
+        color='UBS',
+        title="Discussões por UBS",
+        color_discrete_sequence=px.colors.qualitative.Set2
+    )
 
-        fig_ubs.update_layout(height=520)
+    fig_ubs.update_layout(
+        height=520,
+        xaxis_title="UBS",
+        yaxis_title="Número de Discussões"
+    )
 
-        st.plotly_chart(fig_ubs, use_container_width=True)
+    st.plotly_chart(fig_ubs, use_container_width=True)
 
 # --- ABA EVOLUÇÃO ---
 
