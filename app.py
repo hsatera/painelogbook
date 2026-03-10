@@ -68,7 +68,7 @@ for ubs, anos in residentes_dict.items():
         for nome in nomes:
             resident_metadata[nome] = {'UBS': ubs, 'Ano': ano}
 
-# --- Carregamento de Dados (Blindado contra KeyError) ---
+# --- Carregamento de Dados ---
 GSHEETS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRaHBifgKX5-0Bi4DIBVRJMz2jcLdfLmBg4uvgWXZXwb5ziT6B_OwM7x3oofJWHoUdZQnxrbHHt9YUu/pub?output=csv" 
 
 @st.cache_data(ttl=600)
@@ -79,7 +79,6 @@ def load_data(url, resident_metadata):
         st.error("Erro ao carregar dados.")
         st.stop()
     
-    # Mapeamento exato das colunas do formulário
     column_mapping = {
         'Carimbo de data/hora': 'Data',
         'Docente/Tutor/preceptor': 'Preceptor',
@@ -92,21 +91,17 @@ def load_data(url, resident_metadata):
         'Pactuações/encaminhamentos/feedback realizado/procedimento realizado': 'Encaminhamento'
     }
     
-    # Renomeia as que existem
     df.rename(columns={old: new for old, new in column_mapping.items() if old in df.columns}, inplace=True)
 
-    # GARANTIA: Se a coluna não existir após o rename, cria ela vazia para evitar KeyError
     colunas_obrigatorias = ['Data', 'Preceptor', 'Residente', 'UBS', 'Situacao', 'Questao', 'Modulo', 'Referencia', 'Encaminhamento']
     for col in colunas_obrigatorias:
         if col not in df.columns:
             df[col] = ""
 
-    # Tratamento de Data
     df['Data'] = df['Data'].astype(str).str.strip()
     df['Data'] = df['Data'].str.replace(r'(\d+)\/(\d+)\/(\d{4})\s', r'\3-\2-\1 ', regex=True)
     df['Data'] = pd.to_datetime(df['Data'], errors='coerce')
 
-    # Limpeza de nulos e metadados
     for col in colunas_obrigatorias:
         df[col] = df[col].fillna('')
 
@@ -116,17 +111,23 @@ def load_data(url, resident_metadata):
 
     return df
 
-df = load_data(GSHEETS_URL, resident_metadata)
+# --- FILTRAGEM CRUCIAL ---
+df_raw = load_data(GSHEETS_URL, resident_metadata)
 
-# --- Filtros ---
+# Filtra o DataFrame para manter APENAS residentes que estão no seu dicionário
+lista_residentes_validos = list(resident_metadata.keys())
+df = df_raw[df_raw['Residente'].isin(lista_residentes_validos)].copy()
+
+# --- Filtros Sidebar ---
 st.sidebar.header("⚙️ Filtros")
-residents_from_dict = sorted(list(resident_metadata.keys()))
+residents_from_dict = sorted(lista_residentes_validos)
 selected_residents = st.sidebar.multiselect("Residente", residents_from_dict)
 selected_ubs = st.sidebar.multiselect("UBS", sorted(list(residentes_dict.keys())))
 selected_modulos = st.sidebar.multiselect("Módulo", sorted(df['Modulo'].unique().tolist()))
 selected_months = st.sidebar.multiselect("Mês", df.sort_values('Data')['Mes'].unique().tolist())
 
-filtered_df = df[df['Residente'].isin(residents_from_dict)]
+# Aplicando os filtros sobre o df já limpo
+filtered_df = df.copy()
 if selected_residents: filtered_df = filtered_df[filtered_df['Residente'].isin(selected_residents)]
 if selected_ubs: filtered_df = filtered_df[filtered_df['UBS'].isin(selected_ubs)]
 if selected_modulos: filtered_df = filtered_df[filtered_df['Modulo'].isin(selected_modulos)]
@@ -136,7 +137,6 @@ if selected_months: filtered_df = filtered_df[filtered_df['Mes'].isin(selected_m
 st.title("📚 Análise de Discussões Clínicas da Residência")
 st.header(f"Total de Discussões: {len(filtered_df)}")
 
-# Gráfico Mensal e Acumulado
 def plot_monthly_chart(df_in):
     if df_in.empty: return None
     df_m = df_in.copy().sort_values('Data')
@@ -150,24 +150,22 @@ def plot_monthly_chart(df_in):
     fig.update_layout(title='Evolução das Discussões', height=400)
     return fig
 
-st.plotly_chart(plot_monthly_chart(filtered_df), use_container_width=True)
+chart = plot_monthly_chart(filtered_df)
+if chart:
+    st.plotly_chart(chart, use_container_width=True)
 
-# Outros Gráficos
 c1, c2 = st.columns(2)
 with c1: st.plotly_chart(px.bar(filtered_df['Modulo'].value_counts().reset_index(), x='Modulo', y='count', title="Por Módulo"), use_container_width=True)
 with c2: st.plotly_chart(px.bar(filtered_df['UBS'].value_counts().reset_index(), x='UBS', y='count', title="Por UBS"), use_container_width=True)
 
-# --- Detalhes (Layout Original) ---
 st.header("🔎 Detalhe das Discussões")
 if not filtered_df.empty:
     for resident, group in filtered_df.groupby('Residente', sort=True):
         st.markdown("---")
         st.markdown(f"### 👩‍⚕️ Residente: {resident}")
         for _, row in group.sort_values('Data', ascending=False).iterrows():
-            # Exibe Módulo e Questão como título
             titulo = f"**{row['Modulo']}**: {row['Questao']}" if row['Questao'] else f"**{row['Modulo']}**"
             st.markdown(titulo)
-            
             with st.expander("Ver resumo completo"):
                 st.markdown(f"**Data:** {row['Data'].strftime('%d/%m/%Y') if pd.notna(row['Data']) else 'Não informada'}")
                 if row['Preceptor']: st.markdown(f"**Preceptor:** {row['Preceptor']}")
@@ -176,4 +174,4 @@ if not filtered_df.empty:
                 if row['Referencia']: st.markdown(f"**Referência:** {row['Referencia']}")
                 if row['Encaminhamento']: st.markdown(f"**Encaminhamento:** {row['Encaminhamento']}")
 else:
-    st.info("Nenhum dado encontrado.")
+    st.info("Nenhum dado encontrado para os critérios selecionados.")
