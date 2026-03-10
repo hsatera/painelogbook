@@ -249,13 +249,33 @@ def gerar_wordcloud(texto):
 
     stopwords_pt = set(stopwords.words('portuguese'))
 
+    # stopwords extras específicas
     stopwords_custom = stopwords_pt.union(STOPWORDS)
+
+    remover_extra = {
+        "paciente","pacientes","mesmo","mesma","mesmos","mesmas",
+        "ele","ela","eles","elas","dele","dela","deles","delas",
+        "isso","isto","aquilo","aquele","aquela","aqueles","aquelas",
+        "seu","sua","seus","suas","meu","minha","meus","minhas",
+        "teu","tua","teus","tuas","nosso","nossa","nossos","nossas",
+        "muito","muita","muitos","muitas","pouco","pouca",
+        "tambem","também","ainda","sempre","nunca","ja","já",
+        "apenas","somente","assim","entao","então","aqui","ali",
+        "hoje","ontem","amanha","amanhã"
+    }
+
+    stopwords_custom = stopwords_custom.union(remover_extra)
 
     tokenizer = RegexpTokenizer(r'\w+')
 
     tokens = tokenizer.tokenize(texto.lower())
 
-    tokens = [t for t in tokens if t not in stopwords_custom and len(t) > 3]
+    # filtros
+    tokens = [
+        t for t in tokens
+        if t not in stopwords_custom
+        and len(t) >= 3
+    ]
 
     texto_limpo = " ".join(tokens)
 
@@ -271,9 +291,7 @@ def gerar_wordcloud(texto):
     ).generate(texto_limpo)
 
     fig, ax = plt.subplots(figsize=(12,6))
-
     ax.imshow(wc, interpolation='bilinear')
-
     ax.axis("off")
 
     return fig
