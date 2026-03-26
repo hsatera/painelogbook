@@ -248,8 +248,6 @@ def plot_monthly_chart(df_in):
 def gerar_wordcloud(texto):
 
     stopwords_pt = set(stopwords.words('portuguese'))
-
-    # stopwords extras específicas
     stopwords_custom = stopwords_pt.union(STOPWORDS)
 
     remover_extra = {
@@ -261,16 +259,15 @@ def gerar_wordcloud(texto):
         "muito","muita","muitos","muitas","pouco","pouca",
         "tambem","também","ainda","sempre","nunca","ja","já",
         "apenas","somente","assim","entao","então","aqui","ali",
-        "hoje","ontem","amanha","amanhã"
+        "hoje","ontem","amanha","amanhã", "qual", "quais", "como",
+        "sobre", "pode", "deve", "fazer", "conduta", "manejo"
     }
 
     stopwords_custom = stopwords_custom.union(remover_extra)
 
     tokenizer = RegexpTokenizer(r'\w+')
-
     tokens = tokenizer.tokenize(texto.lower())
 
-    # filtros
     tokens = [
         t for t in tokens
         if t not in stopwords_custom
@@ -286,7 +283,7 @@ def gerar_wordcloud(texto):
         width=1200,
         height=500,
         background_color='white',
-        colormap='viridis',
+        colormap='magma',
         max_words=120
     ).generate(texto_limpo)
 
@@ -303,17 +300,14 @@ st.title("📚 Análise de Discussões Clínicas da Residência")
 tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Visão Geral",
     "📈 Evolução Temporal",
-    "🧠 Situações Clínicas",
+    "🧠 Perguntas Norteadoras",
     "🔎 Detalhes"
 ])
 
 # --- ABA 1 VISÃO GERAL ---
 
 with tab1:
-
     st.header(f"Total de Discussões: {len(filtered_df)}")
-
-    # ----- Gráfico por Módulo -----
 
     fig_mod = px.bar(
         filtered_df['Modulo'].value_counts().reset_index(),
@@ -323,18 +317,10 @@ with tab1:
         title="Discussões por Módulo",
         color_discrete_sequence=px.colors.qualitative.Bold
     )
-
-    fig_mod.update_layout(
-        height=520,
-        xaxis_title="Módulo",
-        yaxis_title="Número de Discussões"
-    )
-
+    fig_mod.update_layout(height=520, xaxis_title="Módulo", yaxis_title="Número de Discussões")
     st.plotly_chart(fig_mod, use_container_width=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-
-    # ----- Gráfico por UBS -----
 
     fig_ubs = px.bar(
         filtered_df['UBS'].value_counts().reset_index(),
@@ -344,78 +330,68 @@ with tab1:
         title="Discussões por UBS",
         color_discrete_sequence=px.colors.qualitative.Set2
     )
-
-    fig_ubs.update_layout(
-        height=520,
-        xaxis_title="UBS",
-        yaxis_title="Número de Discussões"
-    )
-
+    fig_ubs.update_layout(height=520, xaxis_title="UBS", yaxis_title="Número de Discussões")
     st.plotly_chart(fig_ubs, use_container_width=True)
 
 # --- ABA EVOLUÇÃO ---
 
 with tab2:
-
     chart = plot_monthly_chart(filtered_df)
-
     if chart:
         st.plotly_chart(chart, use_container_width=True)
 
-# --- ABA WORDCLOUD ---
+# --- ABA WORDCLOUD (Ajustada para Pergunta Norteadora) ---
 
 with tab3:
+    st.header("Temas das Perguntas Norteadoras")
+    st.info("Esta nuvem de palavras analisa os termos mais frequentes nas **Perguntas Norteadoras** das discussões.")
 
-    st.header("Principais Situações Clínicas")
+    # Mudança aqui: Pegando a coluna 'Questao'
+    texto_questoes = " ".join(filtered_df['Questao'].dropna().astype(str))
 
-    texto = " ".join(filtered_df['Situacao'].dropna().astype(str))
-
-    fig_wc = gerar_wordcloud(texto)
+    fig_wc = gerar_wordcloud(texto_questoes)
 
     if fig_wc:
         st.pyplot(fig_wc)
     else:
         st.info("Sem texto suficiente para gerar nuvem de palavras.")
 
-# --- ABA DETALHES ---
+# --- ABA DETALHES (Incluindo Pergunta Norteadora no Painel) ---
 
 with tab4:
-
     if not filtered_df.empty:
-
         for resident, group in filtered_df.groupby('Residente', sort=True):
-
             st.markdown("---")
-
             st.markdown(f"### 👩‍⚕️ Residente: {resident}")
 
             for _, row in group.sort_values('Data', ascending=False).iterrows():
-
-                titulo = f"**{row['Modulo']}**: {row['Questao']}" if row['Questao'] else f"**{row['Modulo']}**"
-
-                st.markdown(titulo)
-
-                with st.expander("Ver resumo completo"):
-
+                # Título do expander priorizando a questão
+                titulo = f"**{row['Modulo']}**: {row['Questao'][:100]}..." if row['Questao'] else f"**{row['Modulo']}**"
+                
+                with st.expander(titulo):
                     st.markdown(
                         f"**Data:** {row['Data'].strftime('%d/%m/%Y') if pd.notna(row['Data']) else 'Não informada'}"
                     )
-
+                    
                     if row['Preceptor']:
                         st.markdown(f"**Preceptor:** {row['Preceptor']}")
-
+                    
                     if row['UBS']:
                         st.markdown(f"**UBS:** {row['UBS']}")
+                    
+                    # Garantindo que a Pergunta Norteadora apareça em destaque
+                    if row['Questao']:
+                        st.markdown("---")
+                        st.markdown(f"❓ **Pergunta Norteadora:** {row['Questao']}")
+                        st.markdown("---")
 
                     if row['Situacao']:
-                        st.markdown(f"**Situação:** {row['Situacao']}")
+                        st.markdown(f"**Descrição da Situação:** {row['Situacao']}")
 
                     if row['Referencia']:
                         st.markdown(f"**Referência:** {row['Referencia']}")
 
                     if row['Encaminhamento']:
-                        st.markdown(f"**Encaminhamento:** {row['Encaminhamento']}")
-
+                        st.markdown(f"**Encaminhamento/Pactuação:** {row['Encaminhamento']}")
     else:
-
         st.info("Nenhum dado encontrado para os critérios selecionados.")
