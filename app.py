@@ -65,7 +65,11 @@ GSHEETS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRaHBifgKX5-0Bi4D
 # --- LOAD DATA ---
 @st.cache_data(ttl=600)
 def load_data(url, resident_metadata):
-    df = pd.read_csv(url, quoting=csv.QUOTE_MINIMAL)
+    try:
+        df = pd.read_csv(url, quoting=csv.QUOTE_MINIMAL)
+    except:
+        st.error("Erro ao carregar dados.")
+        st.stop()
 
     column_mapping = {
         'Carimbo de data/hora': 'Data',
@@ -87,24 +91,24 @@ def load_data(url, resident_metadata):
         if col not in df.columns:
             df[col] = ""
 
-    # Datas
+    # Datas (Tratamento do código antigo incorporado)
+    df['Data'] = df['Data'].astype(str).str.strip()
+    df['Data'] = df['Data'].str.replace(r'(\d+)\/(\d+)\/(\d{4})\s', r'\3-\2-\1 ', regex=True)
     df['Data'] = pd.to_datetime(df['Data'], errors='coerce')
     df = df.fillna("")
 
-    # --- EXPANSÃO CORRIGIDA ---
+    # --- EXPANSÃO PARA MÚLTIPLOS RESIDENTES ---
     def parse_residents(value):
         if pd.isna(value) or str(value).strip() == "":
             return []
         return [p.strip() for p in re.split(r'[,;\n]+', str(value)) if p.strip()]
 
     rows = []
-
     for _, row in df.iterrows():
         nomes_1 = parse_residents(row.get('Residente_antigo', ''))
         nomes_2 = parse_residents(row.get('Residente_multi', ''))
-
         todos_nomes = list(dict.fromkeys(nomes_1 + nomes_2))
-
+        
         if not todos_nomes:
             todos_nomes = ["Não informado"]
 
@@ -115,7 +119,7 @@ def load_data(url, resident_metadata):
 
     df = pd.DataFrame(rows)
 
-    # Metadata
+    # Metadata e Mês formatado
     df['AnoResidencia'] = df['Residente'].apply(lambda x: resident_metadata.get(x, {}).get('Ano','Não informado'))
     df['UBS'] = df.apply(lambda row: resident_metadata.get(row['Residente'],{}).get('UBS',row['UBS']), axis=1)
     df['Mes'] = df['Data'].apply(lambda x: f"{MONTHS_TRANSLATION.get(x.month)} de {x.year}" if pd.notna(x) else 'Não informado')
@@ -139,7 +143,7 @@ if selected_ubs: filtered_df = filtered_df[filtered_df['UBS'].isin(selected_ubs)
 if selected_modulos: filtered_df = filtered_df[filtered_df['Modulo'].isin(selected_modulos)]
 if selected_months: filtered_df = filtered_df[filtered_df['Mes'].isin(selected_months)]
 
-# --- GRÁFICOS ---
+# --- GRÁFICOS (Com cores do código antigo) ---
 def plot_monthly_chart(df_in):
     if df_in.empty: return None
     df_m = df_in.copy().sort_values('Data')
@@ -149,18 +153,24 @@ def plot_monthly_chart(df_in):
     counts['Acumulado'] = counts['Qtd'].cumsum()
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Bar(x=counts['MesStr'], y=counts['Qtd'], name='Mensal'), secondary_y=False)
-    fig.add_trace(go.Scatter(x=counts['MesStr'], y=counts['Acumulado'], name='Acumulado', mode='lines+markers'), secondary_y=True)
+    # Cores originais: Azul #2E86AB e Vermelho #E74C3C
+    fig.add_trace(go.Bar(x=counts['MesStr'], y=counts['Qtd'], name='Mensal', marker_color='#2E86AB'), secondary_y=False)
+    fig.add_trace(go.Scatter(x=counts['MesStr'], y=counts['Acumulado'], name='Acumulado', mode='lines+markers', line=dict(color='#E74C3C', width=3)), secondary_y=True)
+    fig.update_layout(title='Evolução das Discussões', height=500)
     return fig
 
 def gerar_wordcloud(texto):
     stopwords_pt = set(stopwords.words('portuguese'))
+    # Stopwords customizadas do código antigo
+    stopwords_custom = stopwords_pt.union(STOPWORDS).union({"qual", "como", "manejo", "conduta", "sobre", "pode", "deve", "fazer", "paciente"})
     tokenizer = RegexpTokenizer(r'\w+')
-    tokens = [t for t in tokenizer.tokenize(texto.lower()) if t not in stopwords_pt and len(t) >= 3]
-    if not tokens: return None
-    wc = WordCloud(width=1200, height=500).generate(" ".join(tokens))
-    fig, ax = plt.subplots()
-    ax.imshow(wc)
+    tokens = [t for t in tokenizer.tokenize(texto.lower()) if t not in stopwords_custom and len(t) >= 3]
+    texto_limpo = " ".join(tokens)
+    if not texto_limpo.strip(): return None
+    # Estilo do código antigo (fundo branco, colormap magma)
+    wc = WordCloud(width=1200, height=500, background_color='white', colormap='magma', max_words=100).generate(texto_limpo)
+    fig, ax = plt.subplots(figsize=(12,6))
+    ax.imshow(wc, interpolation='bilinear')
     ax.axis("off")
     return fig
 
@@ -171,20 +181,35 @@ tab1, tab2, tab3, tab4 = st.tabs(["📊 Visão Geral", "📈 Evolução", "🧠 
 
 with tab1:
     st.header(f"Total: {len(filtered_df)}")
-    st.plotly_chart(px.bar(filtered_df['Modulo'].value_counts().reset_index(), x='Modulo', y='count'), use_container_width=True)
-    st.plotly_chart(px.bar(filtered_df['UBS'].value_counts().reset_index(), x='UBS', y='count'), use_container_width=True)
+    # Cores automáticas por categoria como no antigo
+    st.plotly_chart(px.bar(filtered_df['Modulo'].value_counts().reset_index(), x='Modulo', y='count', color='Modulo', title="Por Módulo"), use_container_width=True)
+    st.plotly_chart(px.bar(filtered_df['UBS'].value_counts().reset_index(), x='UBS', y='count', color='UBS', title="Por UBS"), use_container_width=True)
 
 with tab2:
     chart = plot_monthly_chart(filtered_df)
     if chart: st.plotly_chart(chart, use_container_width=True)
 
 with tab3:
+    st.header("Temas das Perguntas Norteadoras")
     fig_wc = gerar_wordcloud(" ".join(filtered_df['Questao'].astype(str)))
     if fig_wc: st.pyplot(fig_wc)
+    else: st.info("Sem dados suficientes.")
 
 with tab4:
-    for resident, group in filtered_df.groupby('Residente'):
-        st.markdown(f"### 👩‍⚕️ {resident}")
-        for _, row in group.sort_values('Data', ascending=False).iterrows():
-            with st.expander(row['Modulo']):
-                st.write(row['Questao'])
+    if not filtered_df.empty:
+        for resident, group in filtered_df.groupby('Residente'):
+            st.markdown(f"### 👩‍⚕️ {resident}")
+            for _, row in group.sort_values('Data', ascending=False).iterrows():
+                # Título do expander formatado como no antigo
+                label = f"{row['Modulo']}: {row['Questao'][:80]}..." if row['Questao'] else row['Modulo']
+                with st.expander(label):
+                    dt_str = row['Data'].strftime('%d/%m/%Y') if pd.notna(row['Data']) else 'Não informada'
+                    st.write(f"**Data:** {dt_str} | **Preceptor:** {row['Preceptor']} | **UBS:** {row['UBS']}")
+                    
+                    if row['Questao']: st.markdown(f"**Pergunta Norteadora:** {row['Questao']}")
+                    if row['Situacao']: st.markdown(f"**Situação:** {row['Situacao']}")
+                    if row['Referencia']: st.markdown(f"**Referência:** {row['Referencia']}")
+                    if row['Encaminhamento']: st.markdown(f"**Encaminhamento:** {row['Encaminhamento']}")
+            st.markdown("---")
+    else:
+        st.info("Nenhum dado encontrado.")
